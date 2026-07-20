@@ -41,13 +41,60 @@ from `logging.folder`.
 2. `colab/confirm_train.ipynb` — GPU, real stratified-subset data, 5 epochs, ViT-S. Run manually on
    Colab (this repo has no CI/GPU access). Not yet run — see `CLAUDE.md`.
 
-## HPC-MARWAN
+## Private repo — access setup (one-time, per machine)
 
-Clone directly to `/home/$USER/retina/repos/ijepa-core` on the login node (compute nodes have no
-internet, same pattern the old pristine-clone path used). `../Code/`'s SLURM jobs invoke this
-engine — see `Code/CLAUDE.md`.
+This repo is **private**. Anonymous `git clone` fails everywhere — HPC-MARWAN and Colab each need a
+one-time credential setup before their first clone.
 
-## Colab
+### HPC-MARWAN (login node) — SSH deploy key
+
+A shared cluster's shell history and `.git/config` are the wrong place for a token, so this uses an
+SSH deploy key instead (read-only, scoped to just this repo).
+
+```bash
+# 1. Generate a dedicated keypair (once) — do NOT reuse your personal GitHub SSH key here.
+ssh-keygen -t ed25519 -f ~/.ssh/ijepa_core_deploy -N "" -C "hpc-marwan-ijepa-core"
+
+# 2. Print the PUBLIC key and add it on GitHub:
+#      github.com/khalilLaatiris/ijepa-core -> Settings -> Deploy keys -> Add deploy key
+#      (leave "Allow write access" UNCHECKED -- read-only is all a clone/pull needs)
+cat ~/.ssh/ijepa_core_deploy.pub
+
+# 3. Point SSH at this key for github.com (add to ~/.ssh/config):
+cat >> ~/.ssh/config <<'EOF'
+Host github-ijepa-core
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/ijepa_core_deploy
+    IdentitiesOnly yes
+EOF
+chmod 600 ~/.ssh/config
+
+# 4. Clone using the alias:
+git clone github-ijepa-core:khalilLaatiris/ijepa-core.git /home/$USER/retina/repos/ijepa-core
+```
+
+Later updates: `cd /home/$USER/retina/repos/ijepa-core && git pull` — the alias is already wired
+into that clone's remote, no need to repeat the URL.
+
+### Colab — repo-scoped fine-grained PAT via Colab Secret
+
+Same pattern the sibling project uses for `KAGGLE_API_TOKEN` (see
+`+ shaped JEPA/notebooks/phase1_stratified_subset_colab.ipynb`).
+
+1. Create a **fine-grained** PAT at `github.com/settings/tokens?type=beta`, scoped to **only**
+   `khalilLaatiris/ijepa-core`, **read-only** (Contents: Read-only is enough).
+2. In Colab: left sidebar → 🔑 Secrets → add secret named `GITHUB_PAT`, paste the token, enable
+   "Notebook access" for `confirm_train.ipynb`.
+3. `colab/confirm_train.ipynb`'s clone cell reads it via `google.colab.userdata.get("GITHUB_PAT")`
+   — never printed, never written to Drive, never appears in a traceback (clone/pull failures are
+   caught and re-raised with the token stripped from the error message).
+
+## HPC-MARWAN — training jobs
+
+Once cloned (above), `../Code/`'s SLURM jobs invoke this engine — see `Code/CLAUDE.md`.
+
+## Colab — confirm-train
 
 `colab/confirm_train.ipynb` mounts Drive and clones this repo to
 `/content/drive/MyDrive/ijepa-core/` — that Drive copy is a convenience clone for session
