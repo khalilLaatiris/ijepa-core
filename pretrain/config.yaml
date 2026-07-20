@@ -1,0 +1,67 @@
+# I-JEPA pretraining config — ViT-B/16, tuned for HPC-MARWAN's V100S GPU.
+#
+# mask/optimization values are the published (Meta) defaults, identical across every config
+# Meta shipped (in1k_vith14_ep300.yaml, dr_vit_base.yaml, etc.) — only model size and the two
+# fields below are hardware-dependent:
+#   - use_bfloat16: false — V100S is Volta (compute capability 7.0), bf16 needs Ampere+.
+#     main.py hard-fails if this is set true on a GPU without native bf16 support.
+#   - batch_size: 48 — fits V100S memory at fp32 (no bf16 headroom); raise it if you're
+#     actually running on a bigger/newer GPU.
+#
+# data.root_path / data.image_folder / logging.folder are placeholders — staging the dataset
+# is out of scope for this script. The vendored dataset loader (src/datasets/imagenet1k.py)
+# expects <root_path>/<image_folder>/train/<class>/<img>; point it at any ImageFolder-shaped
+# dataset laid out that way. Then run:
+#   python main.py --fname config.yaml --device cuda:0
+data:
+  batch_size: 48
+  color_jitter_strength: 0.0
+  crop_scale:
+  - 0.3
+  - 1.0
+  crop_size: 224
+  image_folder: $replace_with_dataset_dirname
+  num_workers: 8
+  pin_mem: true
+  root_path: $replace_with_absolute_path_to_datasets_parent_dir
+  use_color_distortion: false
+  use_gaussian_blur: false
+  use_horizontal_flip: false
+logging:
+  folder: $replace_with_path_for_experiment_logs/vit_base.224-bs.48-ep.100/
+  write_tag: ijepa
+mask:
+  # patch_size=16 -> 14x14=196 token grid at 224px (vit_base/16).
+  allow_overlap: false
+  aspect_ratio:
+  - 0.75
+  - 1.5
+  enc_mask_scale:
+  - 0.85
+  - 1.0
+  min_keep: 4
+  num_enc_masks: 1
+  num_pred_masks: 4
+  patch_size: 16
+  pred_mask_scale:
+  - 0.15
+  - 0.2
+meta:
+  load_checkpoint: false
+  model_name: vit_base
+  pred_depth: 6
+  pred_emb_dim: 384
+  read_checkpoint: null
+  use_bfloat16: false
+optimization:
+  ema:
+  - 0.996
+  - 1.0
+  epochs: 100
+  final_lr: 1.0e-06
+  final_weight_decay: 0.4
+  ipe_scale: 1.0
+  lr: 0.001
+  start_lr: 0.0002
+  warmup: 40
+  weight_decay: 0.04
