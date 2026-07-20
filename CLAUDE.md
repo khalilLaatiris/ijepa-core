@@ -26,7 +26,7 @@ structured for exactly that).
 
 ## Status
 
-- Smoke test: PASSED (commit f26e4d9, `tests/smoke_test.py`). CPU, synthetic data, 2 epochs
+- Smoke test: PASSED (commit 6b47c3e, `tests/smoke_test.py`). CPU, synthetic data, 2 epochs
   (1 fresh + 1 resumed). Run 1 loss: 0.2698. Run 2 (resumed) loss: 0.1814. Checkpoint
   save/resume verified — all keys matched on reload.
 - Colab confirm run (`colab/confirm_train.ipynb`, GPU, real data, 5 epochs, ViT-S): not yet

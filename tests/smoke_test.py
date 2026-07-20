@@ -94,6 +94,27 @@ def main():
     assert ckpt2["epoch"] == 2, f"expected epoch=2 after resume, got {ckpt2['epoch']}"
     assert ckpt2["loss"] == ckpt2["loss"], f"loss is NaN after resume: {ckpt2['loss']}"
 
+    # -- resume correctness: verify via CSV log row count.
+    # CSVLogger opens in append mode and writes a header row on each __init__ call, then
+    # one data row per iteration. Both runs share the same CSV file.
+    # With IMAGES_PER_CLASS=8, N_CLASSES=3, batch_size=4, drop_last=True:
+    #   ipe = 24 // 4 = 6 iterations/epoch
+    # Successful resume: run 1 trains epoch 0 (6 iters), run 2 resumes from epoch 1 and
+    # trains only epoch 1 (6 iters). Each run writes 1 header + 6 data rows → 14 total.
+    # Silent-failure resume: run 2 falls back to start_epoch=0 and retrains both epochs
+    # (12 iters), writing 1 header + 12 data rows → 7 + 13 = 20 total. The mismatch
+    # exposes the silent failure that ckpt2["epoch"]==2 alone cannot detect.
+    csv_path = LOG_FOLDER / "smoke_r0.csv"
+    with open(csv_path) as f:
+        row_count = sum(1 for _ in f)
+    expected_rows = 14  # 2 header rows + 6 iters/epoch * 2 epochs total (1 fresh + 1 resumed)
+    assert row_count == expected_rows, (
+        f"expected {expected_rows} CSV rows (proof run 2 actually resumed instead of "
+        f"retraining from scratch), got {row_count} -- resume may have silently failed "
+        f"(see src/helper.py's load_checkpoint, which swallows exceptions and falls back "
+        f"to epoch=0)"
+    )
+
     print("=== ALL CHECKS PASSED ===")
     print(f"run 1 loss: {ckpt1['loss']:.4f}  |  run 2 loss: {ckpt2['loss']:.4f}")
 
