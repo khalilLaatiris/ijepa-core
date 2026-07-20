@@ -38,7 +38,6 @@ from src.utils.logging import AverageMeter, CSVLogger, gpu_timer, grad_logger
 from src.utils.tensors import repeat_interleave_batch
 
 log_timings = True
-log_freq = 10
 checkpoint_freq = 50
 
 _GLOBAL_SEED = 0
@@ -178,6 +177,7 @@ def main(args, device):
         copy_data=False,
         drop_last=True)
     ipe = len(unsupervised_loader)
+    log_freq = max(1, round(0.20 * ipe))  # log ~5x per epoch (every 20% of iterations), not a fixed count
 
     # -- init optimizer and scheduler
     optimizer, scaler, scheduler, wd_scheduler = init_opt(
