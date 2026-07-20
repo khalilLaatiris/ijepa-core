@@ -3,3 +3,4 @@ __pycache__/
 *.pth.tar
 *.csv
 smoke_test_tmp/
+CLAUDE.md
