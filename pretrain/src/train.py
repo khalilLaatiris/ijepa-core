@@ -304,7 +304,7 @@ def main(args, device):
 
             def log_stats():
                 csv_logger.log(epoch + 1, itr, loss, maskA_meter.val, maskB_meter.val, etime)
-                if (itr % log_freq == 0) or np.isnan(loss) or np.isinf(loss):
+                if (itr % log_freq == 0) or (itr % 100 == 0) or np.isnan(loss) or np.isinf(loss):
                     logger.info('[%d, %5d] loss: %.3f '
                                 'masks: %.1f %.1f '
                                 '[wd: %.2e] [lr: %.2e] '
