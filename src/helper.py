@@ -4,9 +4,6 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 #
-# Vendored unmodified from facebookresearch/ijepa (src/helper.py) — none of
-# init_model/init_opt/load_checkpoint touch DDP/distributed, so nothing here
-# needed adapting for the single-GPU version. See ../README.md for provenance.
 
 import logging
 import sys
@@ -23,6 +20,17 @@ logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger()
 
 
+def _match_state_dict_prefix(model, state_dict):
+    """Align 'module.' prefix (DDP-wrapped) between checkpoint and model."""
+    model_has_prefix = any(k.startswith('module.') for k in model.state_dict())
+    ckpt_has_prefix = any(k.startswith('module.') for k in state_dict)
+    if model_has_prefix and not ckpt_has_prefix:
+        state_dict = {f'module.{k}': v for k, v in state_dict.items()}
+    elif ckpt_has_prefix and not model_has_prefix:
+        state_dict = {k[len('module.'):]: v for k, v in state_dict.items()}
+    return state_dict
+
+
 def load_checkpoint(
     device,
     r_path,
@@ -37,19 +45,19 @@ def load_checkpoint(
         epoch = checkpoint['epoch']
 
         # -- loading encoder
-        pretrained_dict = checkpoint['encoder']
+        pretrained_dict = _match_state_dict_prefix(encoder, checkpoint['encoder'])
         msg = encoder.load_state_dict(pretrained_dict)
         logger.info(f'loaded pretrained encoder from epoch {epoch} with msg: {msg}')
 
         # -- loading predictor
-        pretrained_dict = checkpoint['predictor']
+        pretrained_dict = _match_state_dict_prefix(predictor, checkpoint['predictor'])
         msg = predictor.load_state_dict(pretrained_dict)
         logger.info(f'loaded pretrained encoder from epoch {epoch} with msg: {msg}')
 
         # -- loading target_encoder
         if target_encoder is not None:
             print(list(checkpoint.keys()))
-            pretrained_dict = checkpoint['target_encoder']
+            pretrained_dict = _match_state_dict_prefix(target_encoder, checkpoint['target_encoder'])
             msg = target_encoder.load_state_dict(pretrained_dict)
             logger.info(f'loaded pretrained encoder from epoch {epoch} with msg: {msg}')
 

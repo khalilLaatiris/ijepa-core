@@ -1,50 +1,89 @@
 # ijepa-core
 
-Canonical, single-GPU I-JEPA pretraining engine for the retina-diseases research thread —
-ViT-S/ViT-B, same masking/EMA/loss/schedule math as `facebookresearch/ijepa`'s `main.py`/
-`src/train.py`, vendored-unmodified upstream model/mask/scheduler code, DDP dropped (single GPU
-only). Replaces the earlier pristine-clone approach (`Code/`'s old `slurm/train/ijepa.sl`), which
-had no confirmed-working single-GPU run on either Colab or HPC-MARWAN.
+> **Fork notice.** This is a clone of Meta's official I-JEPA codebase —
+> [facebookresearch/ijepa](https://github.com/facebookresearch/ijepa) ([paper](https://arxiv.org/pdf/2301.08243.pdf),
+> CVPR-23) — with one fix applied: **single-GPU training was broken upstream** (`main.py` always
+> spawned a worker process via `mp.Process` even for a single device, and `init_distributed()`
+> tried to init a NCCL process group, which hangs waiting for peer ranks that never join). Fixed in
+> two files:
+> - `main.py` — single-device runs execute `process_main` directly instead of going through
+>   `mp.Process`/`mp.set_start_method('spawn')`.
+> - `src/utils/distributed.py` — `init_distributed()` returns `(1, 0)` immediately when
+>   `world_size <= 1`, skipping `torch.distributed.init_process_group` entirely.
+>
+> Multi-GPU/SLURM training (`main_distributed.py`, `submitit`) is untouched upstream code. Everything
+> else — model, masking, transforms, schedulers — is vendored unmodified.
 
-Used by `../Code/` (HPC-MARWAN training jobs) and available to any sibling subproject under this
-root. See `CLAUDE.md` for the freeze rule — read it before editing `pretrain/`.
+Canonical I-JEPA training engine for the retina-diseases research thread. Used by `../Code/`'s
+HPC-MARWAN SLURM jobs and available to any sibling subproject under the project root — see the root
+`CLAUDE.md` there for the "always use this repo for I-JEPA training" rule.
 
-## Usage
+## Method
 
-`pretrain/` only trains — it does not stage a dataset. Point it at any ImageFolder-shaped tree with
-a `train/<class>/<img>` level:
+I-JEPA (Image-based Joint-Embedding Predictive Architecture) is a self-supervised method that
+predicts the representations of part of an image from the representations of other parts of the
+same image, in latent space (no pixel-level reconstruction, no hand-crafted augmentation
+invariances).
 
-```bash
-cd pretrain
-python main.py --fname config.yaml --device cuda:0   # or --device cpu
+## Code structure
+
+```
+.
+├── configs                   # experiment '.yaml' configs
+├── src
+│   ├── train.py              # the I-JEPA training loop
+│   ├── helper.py              # model/opt init, checkpoint loading
+│   ├── transforms.py          # pretrain data transforms
+│   ├── datasets                # ImageFolder-style loaders
+│   ├── models                  # ViT encoder + predictor
+│   ├── masks                   # mask collators/utilities
+│   └── utils                   # distributed, schedulers, tensors, logging
+├── main_distributed.py       # SLURM/multi-GPU entrypoint (submitit)
+└── main.py                   # single/multi-GPU local entrypoint (fixed, see above)
 ```
 
-Resume: set `meta.load_checkpoint: true` in the config — picks up `<write_tag>-latest.pth.tar`
-from `logging.folder`.
+## Launching training
 
-## What's vendored unmodified vs. adapted
+### Single-GPU (the fixed path — use this for retina training)
 
-| File | Status |
-|---|---|
-| `src/models/vision_transformer.py` | vendored unmodified (ViT encoder + predictor) |
-| `src/masks/multiblock.py`, `src/masks/utils.py` | vendored unmodified |
-| `src/utils/schedulers.py`, `src/utils/tensors.py`, `src/utils/logging.py` | vendored unmodified |
-| `src/transforms.py` | vendored unmodified |
-| `src/datasets/imagenet1k.py` | vendored unmodified (plain `ImageFolder` wrapper, needs `train/`) |
-| `src/helper.py` | vendored unmodified |
-| `src/train.py` | adapted — DDP/`init_distributed`/`AllReduce` dropped (no-ops at world_size=1 anyway); `DistributedSampler` still built (`world_size=1, rank=0`) since the dataset loader requires it |
-| `main.py` | new — single-device CLI |
+```bash
+python main.py \
+  --fname configs/your_config.yaml \
+  --devices cuda:0
+```
 
-## Test gate (both required before the freeze rule applies)
+### Multi-GPU (unmodified upstream, local)
 
-1. `tests/smoke_test.py` — CPU, synthetic data, run locally. Passing as of the commit that added it.
-2. `colab/confirm_train.ipynb` — GPU, real stratified-subset data, 5 epochs, ViT-S. Run manually on
-   Colab (this repo has no CI/GPU access). Not yet run — see `CLAUDE.md`.
+```bash
+python main.py \
+  --fname configs/your_config.yaml \
+  --devices cuda:0 cuda:1 cuda:2
+```
+
+### Multi-GPU / SLURM (unmodified upstream)
+
+```bash
+python main_distributed.py \
+  --fname configs/your_config.yaml \
+  --folder $path_to_save_submitit_logs \
+  --partition $slurm_partition \
+  --nodes 2 --tasks-per-node 8 \
+  --time 1000
+```
+
+Config files hold all experiment parameters (no CLI hyperparameter flags) — see `configs/` for
+examples.
+
+## Requirements
+
+* Python 3.8+
+* PyTorch 2.0+, torchvision
+* pyyaml, numpy, opencv, submitit (submitit only needed for `main_distributed.py`)
 
 ## Private repo — access setup (one-time, per machine)
 
-This repo is **private**. Anonymous `git clone` fails everywhere — HPC-MARWAN and Colab each need a
-one-time credential setup before their first clone.
+This repo is **private**. Anonymous `git clone` fails everywhere — HPC-MARWAN and any other
+machine need a one-time credential setup before their first clone.
 
 ### HPC-MARWAN (login node) — SSH deploy key
 
@@ -52,7 +91,7 @@ A shared cluster's shell history and `.git/config` are the wrong place for a tok
 SSH deploy key instead (read-only, scoped to just this repo).
 
 ```bash
-# 1. Generate a dedicated keypair (once) — do NOT reuse your personal GitHub SSH key here.
+# 1. Generate a dedicated keypair (once) -- do NOT reuse your personal GitHub SSH key here.
 ssh-keygen -t ed25519 -f ~/.ssh/ijepa_core_deploy -N "" -C "hpc-marwan-ijepa-core"
 
 # 2. Print the PUBLIC key and add it on GitHub:
@@ -77,25 +116,20 @@ git clone github-ijepa-core:khalilLaatiris/ijepa-core.git /home/$USER/retina/rep
 Later updates: `cd /home/$USER/retina/repos/ijepa-core && git pull` — the alias is already wired
 into that clone's remote, no need to repeat the URL.
 
-### Colab — repo-scoped fine-grained PAT via Colab Secret
+## Citation
 
-Same pattern the sibling project uses for `KAGGLE_API_TOKEN` (see
-`+ shaped JEPA/notebooks/phase1_stratified_subset_colab.ipynb`).
+Original method — please cite the upstream paper if you use this code:
 
-1. Create a **fine-grained** PAT at `github.com/settings/tokens?type=beta`, scoped to **only**
-   `khalilLaatiris/ijepa-core`, **read-only** (Contents: Read-only is enough).
-2. In Colab: left sidebar → 🔑 Secrets → add secret named `GITHUB_PAT`, paste the token, enable
-   "Notebook access" for `confirm_train.ipynb`.
-3. `colab/confirm_train.ipynb`'s clone cell reads it via `google.colab.userdata.get("GITHUB_PAT")`
-   — never printed, never written to Drive, never appears in a traceback (clone/pull failures are
-   caught and re-raised with the token stripped from the error message).
+```
+@article{assran2023self,
+  title={Self-Supervised Learning from Images with a Joint-Embedding Predictive Architecture},
+  author={Assran, Mahmoud and Duval, Quentin and Misra, Ishan and Bojanowski, Piotr and Vincent, Pascal and Rabbat, Michael and LeCun, Yann and Ballas, Nicolas},
+  journal={arXiv preprint arXiv:2301.08243},
+  year={2023}
+}
+```
 
-## HPC-MARWAN — training jobs
+## License
 
-Once cloned (above), `../Code/`'s SLURM jobs invoke this engine — see `Code/CLAUDE.md`.
-
-## Colab — confirm-train
-
-`colab/confirm_train.ipynb` mounts Drive and clones this repo to
-`/content/drive/MyDrive/ijepa-core/` — that Drive copy is a convenience clone for session
-persistence, not a separate distribution channel. GitHub is the single source of truth.
+Attribution-NonCommercial 4.0 International — see [LICENSE](./LICENSE) (same as upstream). Research
+use only, no commercial use.

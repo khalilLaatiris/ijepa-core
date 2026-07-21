@@ -4,8 +4,6 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 #
-# Vendored unmodified from facebookresearch/ijepa (src/models/vision_transformer.py).
-# See ../../README.md for provenance.
 
 import math
 from functools import partial

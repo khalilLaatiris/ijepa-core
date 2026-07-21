@@ -4,11 +4,6 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 #
-# Vendored unmodified from facebookresearch/ijepa (src/datasets/imagenet1k.py).
-# See ../../README.md for provenance. Dataset-agnostic despite the name: it's a plain
-# torchvision ImageFolder wrapper expecting <root>/<image_folder>/{train,val}/<class>/<img>,
-# so it works for the Phase-1 retina subset too as long as that layout is provided (e.g. via
-# a `train/` symlink, same as slurm/train/ijepa.sl already does).
 
 import os
 import subprocess
@@ -50,10 +45,33 @@ def make_imagenet1k(
     if subset_file is not None:
         dataset = ImageNetSubset(dataset, subset_file)
     logger.info('ImageNet dataset created')
-    dist_sampler = torch.utils.data.distributed.DistributedSampler(
-        dataset=dataset,
-        num_replicas=world_size,
-        rank=rank)
+    # For single-process (non-distributed) runs we avoid the
+    # DistributedSampler and also set `num_workers=0` to prevent
+    # collate-time multiprocessing issues with shared state.
+    if (world_size is None) or (world_size <= 1):
+        # Simple random sampler wrapper that provides `set_epoch()` for
+        # compatibility with training loop which calls `sampler.set_epoch()`.
+        base_sampler = torch.utils.data.RandomSampler(dataset)
+
+        class _DummySampler(object):
+            def __init__(self, sampler):
+                self.sampler = sampler
+            def __iter__(self):
+                return iter(self.sampler)
+            def __len__(self):
+                return len(self.sampler)
+            def set_epoch(self, epoch):
+                return
+
+        dist_sampler = _DummySampler(base_sampler)
+        effective_num_workers = num_workers
+    else:
+        dist_sampler = torch.utils.data.distributed.DistributedSampler(
+            dataset=dataset,
+            num_replicas=world_size,
+            rank=rank)
+        effective_num_workers = num_workers
+
     data_loader = torch.utils.data.DataLoader(
         dataset,
         collate_fn=collator,
@@ -61,7 +79,7 @@ def make_imagenet1k(
         batch_size=batch_size,
         drop_last=drop_last,
         pin_memory=pin_mem,
-        num_workers=num_workers,
+        num_workers=effective_num_workers,
         persistent_workers=False)
     logger.info('ImageNet unsupervised data loader created')
 

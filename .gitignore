@@ -1,6 +1,3 @@
-__pycache__/
-*.pyc
-*.pth.tar
-*.csv
-smoke_test_tmp/
-CLAUDE.md
+*.swp
+*.swo
+__pycache__
