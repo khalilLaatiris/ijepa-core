@@ -80,41 +80,15 @@ examples.
 * PyTorch 2.0+, torchvision
 * pyyaml, numpy, opencv, submitit (submitit only needed for `main_distributed.py`)
 
-## Private repo — access setup (one-time, per machine)
+## Cloning
 
-This repo is **private**. Anonymous `git clone` fails everywhere — HPC-MARWAN and any other
-machine need a one-time credential setup before their first clone.
-
-### HPC-MARWAN (login node) — SSH deploy key
-
-A shared cluster's shell history and `.git/config` are the wrong place for a token, so this uses an
-SSH deploy key instead (read-only, scoped to just this repo).
+This repo is **public** — plain anonymous clone works everywhere, no credential setup needed:
 
 ```bash
-# 1. Generate a dedicated keypair (once) -- do NOT reuse your personal GitHub SSH key here.
-ssh-keygen -t ed25519 -f ~/.ssh/ijepa_core_deploy -N "" -C "hpc-marwan-ijepa-core"
-
-# 2. Print the PUBLIC key and add it on GitHub:
-#      github.com/khalilLaatiris/ijepa-core -> Settings -> Deploy keys -> Add deploy key
-#      (leave "Allow write access" UNCHECKED -- read-only is all a clone/pull needs)
-cat ~/.ssh/ijepa_core_deploy.pub
-
-# 3. Point SSH at this key for github.com (add to ~/.ssh/config):
-cat >> ~/.ssh/config <<'EOF'
-Host github-ijepa-core
-    HostName github.com
-    User git
-    IdentityFile ~/.ssh/ijepa_core_deploy
-    IdentitiesOnly yes
-EOF
-chmod 600 ~/.ssh/config
-
-# 4. Clone using the alias:
-git clone github-ijepa-core:khalilLaatiris/ijepa-core.git /home/$USER/retina/repos/ijepa-core
+git clone https://github.com/khalilLaatiris/ijepa-core.git /home/$USER/retina/repos/ijepa-core
 ```
 
-Later updates: `cd /home/$USER/retina/repos/ijepa-core && git pull` — the alias is already wired
-into that clone's remote, no need to repeat the URL.
+Later updates: `cd /home/$USER/retina/repos/ijepa-core && git pull`.
 
 ## Citation
 
